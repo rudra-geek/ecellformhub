@@ -8,10 +8,14 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  Download,
   ExternalLink,
+  FileText,
   FilePlus2,
+  Inbox,
   Loader2,
   Pencil,
+  Send,
   Settings,
   Share2,
   ShieldCheck,
@@ -40,6 +44,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { makeSlug, type FormRow, type Question } from "@/lib/form-types";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -61,6 +72,8 @@ function Dashboard() {
   const [search, setSearch] = useState("");
   const [toDelete, setToDelete] = useState<FormRow | null>(null);
   const [approvalsModalOpen, setApprovalsModalOpen] = useState(false);
+  const [toSendForm, setToSendForm] = useState<FormRow | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   const isSuperAdmin = user.email === "ecellniet@niet.co.in";
   const displayName = user.user_metadata?.["name"] || (isSuperAdmin ? "Technical Head" : "User");
@@ -108,6 +121,73 @@ function Dashboard() {
       });
       return map;
     },
+  });
+
+  // Fetch responses shared WITH the current user
+  const sharedWithMeQuery = useQuery({
+    queryKey: ["shared-with-me", user.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("shared_responses" as any)
+        .select("id, form_id, sender_email, sender_name, shared_at")
+        .eq("recipient_id", user.id)
+        .order("shared_at", { ascending: false });
+      if (error) throw error;
+      if (!data || data.length === 0) return [];
+      // Fetch form details for each shared item
+      const formIds = [...new Set((data as any[]).map((s: any) => s.form_id))];
+      const { data: forms, error: fErr } = await supabase
+        .from("forms")
+        .select("id, title, description")
+        .in("id", formIds);
+      if (fErr) throw fErr;
+      const formMap = Object.fromEntries((forms ?? []).map((f) => [f.id, f]));
+      return (data as any[]).map((s: any) => ({
+        ...s,
+        form_title: formMap[s.form_id]?.title ?? "Unknown Form",
+        form_description: formMap[s.form_id]?.description ?? "",
+      }));
+    },
+  });
+
+  const sharedItems = sharedWithMeQuery.data ?? [];
+
+  // Fetch all active users except current user for the Send dropdown
+  const usersQuery = useQuery({
+    queryKey: ["all-users", user.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email")
+        .neq("id", user.id)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const sendFormMutation = useMutation({
+    mutationFn: async ({ formId, recipientId }: { formId: string; recipientId: string }) => {
+      const { error } = await supabase
+        .from("shared_responses" as any)
+        .insert({
+          form_id: formId,
+          sender_id: user.id,
+          recipient_id: recipientId,
+          sender_email: user.email ?? "",
+          sender_name: displayName,
+        } as never);
+      if (error) {
+        if (error.code === "23505") throw new Error("Already sent to this user");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Form responses sent successfully!");
+      setToSendForm(null);
+      setSelectedUserId("");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   // Admin: Approve Form
@@ -487,6 +567,35 @@ function Dashboard() {
                       </Button>
                     )}
 
+                    {/* Send responses to another user */}
+                    {isPending || isDraft || isRejected ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          toast.warning(
+                            isRejected
+                              ? "Rejected forms cannot be sent."
+                              : isDraft
+                              ? "Submit this form for approval first before sending responses."
+                              : "This form is pending admin approval."
+                          )
+                        }
+                        className="text-muted-foreground opacity-60"
+                      >
+                        <Send className="size-3.5" /> Send
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setToSendForm(form)}
+                        className="text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                      >
+                        <Send className="size-3.5" /> Send
+                      </Button>
+                    )}
+
                     <Button size="sm" variant="ghost" onClick={() => setToDelete(form)}>
                       <Trash2 className="text-destructive size-3.5" />
                     </Button>
@@ -496,6 +605,54 @@ function Dashboard() {
             );
           })}
         </div>
+      )}
+
+      {/* SHARED WITH ME SECTION */}
+      {sharedItems.length > 0 && (
+        <>
+          <div className="mt-12 flex items-center gap-2">
+            <Inbox className="size-5 text-sky-400" />
+            <h2 className="text-xl font-semibold">Shared with me</h2>
+            <Badge className="bg-sky-500/20 text-sky-400 border-sky-500/30 text-xs">
+              {sharedItems.length}
+            </Badge>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {sharedItems.map((item) => (
+              <Card key={item.id} className="flex flex-col border-sky-500/20">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-base leading-snug">{item.form_title}</CardTitle>
+                    <Badge className="bg-sky-500/20 text-sky-400 border-sky-500/30 flex items-center gap-1 shrink-0 text-[10px]">
+                      <Send className="size-3" /> Shared
+                    </Badge>
+                  </div>
+                  {item.form_description && (
+                    <p className="text-muted-foreground line-clamp-2 text-sm">
+                      {item.form_description}
+                    </p>
+                  )}
+                </CardHeader>
+                <CardContent className="mt-auto space-y-3">
+                  <div className="text-muted-foreground space-y-0.5 text-xs">
+                    <p>
+                      Sent by{" "}
+                      <strong className="text-foreground">
+                        {item.sender_name || item.sender_email}
+                      </strong>
+                    </p>
+                    <p>Received {new Date(item.shared_at).toLocaleDateString()}</p>
+                  </div>
+                  <Button asChild size="sm" variant="secondary" className="w-full">
+                    <Link to="/shared/$shareId" params={{ shareId: item.id }}>
+                      <BarChart3 className="size-3.5" /> View Responses
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
       {/* ADMIN: FORM APPROVALS DIALOG */}
@@ -623,6 +780,81 @@ function Dashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* SEND FORM RESPONSES DIALOG */}
+      <Dialog
+        open={!!toSendForm}
+        onOpenChange={(o) => {
+          if (!o) {
+            setToSendForm(null);
+            setSelectedUserId("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="size-5 text-sky-400" /> Send Form Responses
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Send the responses of <strong>{toSendForm?.title}</strong> to another user on the platform. They will be able to view and download the responses.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Select user</label>
+              {usersQuery.isLoading ? (
+                <div className="text-muted-foreground flex items-center gap-2 text-sm py-3">
+                  <Loader2 className="size-4 animate-spin" /> Loading users…
+                </div>
+              ) : (usersQuery.data ?? []).length === 0 ? (
+                <p className="text-muted-foreground text-sm py-3">No other active users found.</p>
+              ) : (
+                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a user…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(usersQuery.data ?? []).map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email} {u.email ? `(${u.email})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setToSendForm(null);
+                  setSelectedUserId("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={!selectedUserId || sendFormMutation.isPending}
+                onClick={() =>
+                  toSendForm &&
+                  sendFormMutation.mutate({ formId: toSendForm.id, recipientId: selectedUserId })
+                }
+                className="bg-sky-600 hover:bg-sky-500 text-white"
+              >
+                {sendFormMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Check className="size-4" />
+                )}
+                Send Responses
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
