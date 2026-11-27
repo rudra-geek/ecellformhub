@@ -16,6 +16,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as FormSlugRouteImport } from './routes/form.$slug'
+import { Route as AuthenticatedSharedShareIdRouteImport } from './routes/_authenticated/shared.$shareId'
 import { Route as AuthenticatedFormsFormIdEditRouteImport } from './routes/_authenticated/forms.$formId.edit'
 import { Route as AuthenticatedFormsFormIdResponsesRouteImport } from './routes/_authenticated/forms.$formId.responses'
 
@@ -53,6 +54,12 @@ const FormSlugRoute = FormSlugRouteImport.update({
   path: '/form/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSharedShareIdRoute =
+  AuthenticatedSharedShareIdRouteImport.update({
+    id: '/shared/$shareId',
+    path: '/shared/$shareId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedFormsFormIdEditRoute =
   AuthenticatedFormsFormIdEditRouteImport.update({
     id: '/forms/$formId/edit',
@@ -73,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/form/$slug': typeof FormSlugRoute
+  '/shared/$shareId': typeof AuthenticatedSharedShareIdRoute
   '/forms/$formId/edit': typeof AuthenticatedFormsFormIdEditRoute
   '/forms/$formId/responses': typeof AuthenticatedFormsFormIdResponsesRoute
 }
@@ -83,6 +91,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/form/$slug': typeof FormSlugRoute
+  '/shared/$shareId': typeof AuthenticatedSharedShareIdRoute
   '/forms/$formId/edit': typeof AuthenticatedFormsFormIdEditRoute
   '/forms/$formId/responses': typeof AuthenticatedFormsFormIdResponsesRoute
 }
@@ -95,6 +104,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/form/$slug': typeof FormSlugRoute
+  '/_authenticated/shared/$shareId': typeof AuthenticatedSharedShareIdRoute
   '/_authenticated/forms/$formId/edit': typeof AuthenticatedFormsFormIdEditRoute
   '/_authenticated/forms/$formId/responses': typeof AuthenticatedFormsFormIdResponsesRoute
 }
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/form/$slug'
+    | '/shared/$shareId'
     | '/forms/$formId/edit'
     | '/forms/$formId/responses'
   fileRoutesByTo: FileRoutesByTo
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/form/$slug'
+    | '/shared/$shareId'
     | '/forms/$formId/edit'
     | '/forms/$formId/responses'
   id:
@@ -128,6 +140,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/settings'
     | '/form/$slug'
+    | '/_authenticated/shared/$shareId'
     | '/_authenticated/forms/$formId/edit'
     | '/_authenticated/forms/$formId/responses'
   fileRoutesById: FileRoutesById
@@ -191,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FormSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/shared/$shareId': {
+      id: '/_authenticated/shared/$shareId'
+      path: '/shared/$shareId'
+      fullPath: '/shared/$shareId'
+      preLoaderRoute: typeof AuthenticatedSharedShareIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/forms/$formId/edit': {
       id: '/_authenticated/forms/$formId/edit'
       path: '/forms/$formId/edit'
@@ -211,6 +231,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedSharedShareIdRoute: typeof AuthenticatedSharedShareIdRoute
   AuthenticatedFormsFormIdEditRoute: typeof AuthenticatedFormsFormIdEditRoute
   AuthenticatedFormsFormIdResponsesRoute: typeof AuthenticatedFormsFormIdResponsesRoute
 }
@@ -218,6 +239,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedSharedShareIdRoute: AuthenticatedSharedShareIdRoute,
   AuthenticatedFormsFormIdEditRoute: AuthenticatedFormsFormIdEditRoute,
   AuthenticatedFormsFormIdResponsesRoute:
     AuthenticatedFormsFormIdResponsesRoute,

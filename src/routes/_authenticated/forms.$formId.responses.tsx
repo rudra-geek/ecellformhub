@@ -1,14 +1,16 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  Check,
   Download,
   Eye,
   FileText,
   Loader2,
   RefreshCw,
+  Send,
   Trash2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,6 +28,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -39,6 +42,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { exportResponsesToExcel, type ResponseRecord } from "@/lib/excel";
 import { exportResponsesToPdf } from "@/lib/pdf";
 import type { FormRow, Question } from "@/lib/form-types";
@@ -63,6 +73,8 @@ function Responses() {
   const [sortAsc, setSortAsc] = useState(false);
   const [detail, setDetail] = useState<ResponseRecord | null>(null);
   const [toDelete, setToDelete] = useState<string | null>(null);
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   const query = useQuery({
     queryKey: ["responses", formId, user.id],
@@ -166,6 +178,47 @@ function Responses() {
     qc.invalidateQueries({ queryKey: ["response-counts"] });
   }
 
+  // Fetch all users (except current user) for the send dropdown
+  const usersQuery = useQuery({
+    queryKey: ["all-users", user.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email")
+        .neq("id", user.id)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const displayName = user.user_metadata?.["name"] || user.email?.split("@")[0] || "User";
+
+  // Send mutation
+  const sendMutation = useMutation({
+    mutationFn: async (recipientId: string) => {
+      const { error } = await supabase
+        .from("shared_responses" as any)
+        .insert({
+          form_id: formId,
+          sender_id: user.id,
+          recipient_id: recipientId,
+          sender_email: user.email ?? "",
+          sender_name: displayName,
+        } as never);
+      if (error) {
+        if (error.code === "23505") throw new Error("Already sent to this user");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Responses sent successfully!");
+      setSendDialogOpen(false);
+      setSelectedUserId("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (query.isLoading) {
     return (
       <div className="text-muted-foreground flex items-center gap-2 p-12">
@@ -242,6 +295,15 @@ function Responses() {
             }
           >
             <Download className="size-4" /> Download Excel
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!rows.length}
+            onClick={() => setSendDialogOpen(true)}
+            className="text-sky-400 border-sky-500/40 hover:bg-sky-500/10"
+          >
+            <Send className="size-4" /> Send
           </Button>
         </div>
       </div>
@@ -360,6 +422,63 @@ function Responses() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* SEND RESPONSES DIALOG */}
+      <Dialog open={sendDialogOpen} onOpenChange={(o) => { if (!o) { setSendDialogOpen(false); setSelectedUserId(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="size-5 text-sky-400" /> Send Responses
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Send the responses of <strong>{form?.title}</strong> to another team member. They will be able to view and download the responses.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Select user to send to</label>
+              {usersQuery.isLoading ? (
+                <div className="text-muted-foreground flex items-center gap-2 text-sm py-3">
+                  <Loader2 className="size-4 animate-spin" /> Loading users…
+                </div>
+              ) : (usersQuery.data ?? []).length === 0 ? (
+                <p className="text-muted-foreground text-sm py-3">No other users on the platform.</p>
+              ) : (
+                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a user…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(usersQuery.data ?? []).map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email} {u.email ? `(${u.email})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setSendDialogOpen(false); setSelectedUserId(""); }}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={!selectedUserId || sendMutation.isPending}
+                onClick={() => sendMutation.mutate(selectedUserId)}
+                className="bg-sky-600 hover:bg-sky-500 text-white"
+              >
+                {sendMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Check className="size-4" />
+                )}
+                Send Responses
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
