@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { exportResponsesToExcel, type ResponseRecord } from "@/lib/excel";
 import { exportResponsesToPdf } from "@/lib/pdf";
+import { fetchFormResponseRecords } from "@/lib/responses";
 import type { FormRow, Question } from "@/lib/form-types";
 
 interface SharedResponseRow {
@@ -88,36 +89,7 @@ function SharedResponses() {
         .order("position");
       if (qErr) throw qErr;
 
-      // Fetch responses
-      const { data: rs, error: rErr } = await supabase
-        .from("responses")
-        .select("id, submitted_at, respondent_email")
-        .eq("form_id", share.form_id)
-        .order("submitted_at", { ascending: false });
-      if (rErr) throw rErr;
-
-      // Fetch answers
-      const ids = (rs ?? []).map((r) => r.id);
-      let answers: { response_id: string; question_id: string; answer: string | null }[] = [];
-      if (ids.length) {
-        const { data: as_, error: aErr } = await supabase
-          .from("response_answers")
-          .select("response_id, question_id, answer")
-          .in("response_id", ids);
-        if (aErr) throw aErr;
-        answers = as_ ?? [];
-      }
-
-      const records: ResponseRecord[] = (rs ?? []).map((r) => ({
-        id: r.id,
-        submitted_at: r.submitted_at,
-        respondent_email: r.respondent_email,
-        answers: Object.fromEntries(
-          answers
-            .filter((a) => a.response_id === r.id)
-            .map((a) => [a.question_id, a.answer ?? ""]),
-        ),
-      }));
+      const records = await fetchFormResponseRecords(share.form_id);
 
       return {
         share,
